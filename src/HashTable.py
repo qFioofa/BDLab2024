@@ -1,4 +1,3 @@
-
 class CityHash:
     def __init__(self):
         self.k2 = 0x9ae16a3b2f90404f
@@ -27,7 +26,8 @@ class CityHash:
             d = (self._rotate(a, 25) + b) * mul
             return self._finalize_hash(c ^ d, mul)
         return 0
- 
+
+
 class HashTable:
     def __init__(self, template):
         self.template = template
@@ -36,24 +36,15 @@ class HashTable:
         self.hasher = CityHash()
 
     def _hash_key(self, key):
-        composite_key = "_".join(str(key[field]) for field in self.template["keys"].keys())
+        composite_key = "_".join(str(key.get(field, "")) for field in self.template["keys"].keys())
         return self.hasher.cityhash64(composite_key) % self.table_size
 
-    def _validate_record(self, record):
-        if "keys" not in record or "values" not in record:
-            raise ValueError("Record must contain 'keys' and 'values'.")
-        for field, field_type in self.template["keys"].items():
-            if field not in record["keys"] or not isinstance(record["keys"][field], eval(field_type)):
-                raise ValueError(f"Key '{field}' must be of type {field_type}.")
-
-        for field, field_type in self.template["values"].items():
-            if field not in record["values"] or not isinstance(record["values"][field], eval(field_type)):
-                raise ValueError(f"Value '{field}' must be of type {field_type}.")
-
     def insert(self, record):
-        #self._validate_record(record)
         key = record["keys"]
         value = record["values"]
+
+        if self.find(key):
+            raise ValueError("Record already exists with thore keys")
 
         hash_index = self._hash_key(key)
         if not self.hash_table[hash_index]:
@@ -64,54 +55,81 @@ class HashTable:
                 item[1] = value
                 return
         self.hash_table[hash_index].append([key, value])
-        for k in self.hash_table:
-            if k!=None:
-                print(k)
 
-    def find(self, key):
-        hash_index = self._hash_key(key)
-        bucket = self.hash_table[hash_index]
-        for k in self.hash_table:
-            if k!=None:
-                print(k)
-        if bucket:
-            for k, v in bucket:
-                if k == key:
-                    return v
-        return None
+    def _matches_partial_key(self, record_key, search_key):
+        for field, value in search_key.items():
+            if field in record_key and record_key[field] != value:
+                return False
+        return True
 
-    def find_by_value(self, value):
+    def find(self, search_key):
+        matching_records = []
         for bucket in self.hash_table:
             if bucket:
-                for k, v in bucket:
-                    if v == value:
-                        return k
-        for k in self.hash_table:
-            if k!=None:
-                print(k)
-        return None
+                for record_key, record_value in bucket:
+                    if self._matches_partial_key(record_key, search_key):
+                        matching_records.append({"keys": record_key, "values": record_value})
+        return matching_records
+
+    def find_by_value(self, search_value):
+        matching_records = []
+        for bucket in self.hash_table:
+            if bucket:
+                for record_key, record_value in bucket:
+                    if any(
+                        record_value.get(field, None) == value
+                        for field, value in search_value.items()
+                    ):
+                        matching_records.append({"keys": record_key, "values": record_value})
+        return matching_records
 
     def delete(self, key):
         hash_index = self._hash_key(key)
         bucket = self.hash_table[hash_index]
-        for k in self.hash_table:
-            if k!=None:
-                print(k)
+        deleted_records = []
+
         if bucket:
-            for i, (k, v) in enumerate(bucket):
-                if k == key:
+            for i in range(len(bucket) - 1, -1, -1):
+                record_key, record_value = bucket[i]
+                if record_key == key:
+                    deleted_records.append({"keys": record_key, "values": record_value})
                     del bucket[i]
-                    return True
-        return False
+
+        return deleted_records
 
     def delete_by_value(self, value):
-        for k in self.hash_table:
-            if k!=None:
-                print(k)
+        deleted_records = []
+
         for bucket in self.hash_table:
             if bucket:
-                for i, (k, v) in enumerate(bucket):
-                    if v == value:
+                for i in range(len(bucket) - 1, -1, -1):
+                    record_key, record_value = bucket[i]
+                    if all(record_value.get(field, None) == val for field, val in value.items()):
+                        deleted_records.append({"keys": record_key, "values": record_value})
                         del bucket[i]
-                        return True
-        return False
+
+        return deleted_records
+    
+    def all_records(self):
+        records = []
+        for bucket in self.hash_table:
+            if bucket:
+                for record_key, record_value in bucket:
+                    records.append({"keys": record_key, "values": record_value})
+        return records
+    
+    def edit(self, record, updated_data):
+        key = updated_data["keys"]
+        hash_index = self._hash_key(key)
+
+        bucket = self.hash_table[hash_index]
+        
+        if not bucket:
+            raise ValueError(f"Record with key {key} not found.")
+
+        for idx, (record_key, record_value) in enumerate(bucket):
+            if record_key == key:
+                bucket[idx] = [updated_data["keys"], updated_data["values"]]
+                return
+
+        raise ValueError(f"Record with key {key} not found.")

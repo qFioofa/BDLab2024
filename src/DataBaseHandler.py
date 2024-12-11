@@ -26,7 +26,8 @@ class DataBaseHandler:
             case "B-Tree":
                 if not self.current_template:
                     raise ValueError("Template must be set before creating a B-Tree handler.")
-                self.handler = BTree(db_path, self.current_template)
+                self.handler = BTree(self.current_template)
+                # db_path, self.current_template
             case "Hash-table":
                 if not self.current_template:
                     raise ValueError("Template must be set before creating a HashTable handler.")
@@ -64,3 +65,13 @@ class DataBaseHandler:
         if not self.handler:
             raise ValueError("Handler is not set. Use `set_implementation` to initialize the handler.")
         return self.handler.delete_by_value(value)
+    
+    def all_records(self):
+        if not self.handler:
+            raise ValueError("Handler is not set. Use `set_implementation` to initialize the handler.")
+        return self.handler.all_records()
+    
+    def edit(self,record, updated_data):
+        if not self.handler:
+            raise ValueError("Handler is not set. Use `set_implementation` to initialize the handler.")
+        return self.handler.edit(record, updated_data)
