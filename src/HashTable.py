@@ -38,7 +38,7 @@ class HashTable:
     hasher : CityHash
     dir : str
     unreadable_files : set[str] = ("BDInfo.json")
-    MAX_CAPASITY: int = 4048
+    MAX_CAPASITY: int = 2**10
 
     def __init__(self, template, dir) ->None:
         self.template = template

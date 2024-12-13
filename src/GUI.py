@@ -16,7 +16,7 @@ class DatabaseGUI:
         self.selected_folder = None
 
         try:
-            icon = PhotoImage(file='./assets/icon.png')
+            icon = PhotoImage(file='/assets/icon.png')
             self.root.iconphoto(False, icon)
         except Exception as e:
             print(f"Error loading icon: {e}")
@@ -89,7 +89,7 @@ class DatabaseGUI:
         if not db_name or not implementation or not template:
             messagebox.showerror("Error", "Please provide:\nDatabase name\nImplementation\nData template.")
             return
-        
+
         if not os.path.exists(db_path):
             os.makedirs(db_path)
             db_info: dict[str,str] = {
@@ -773,7 +773,7 @@ class DatabaseGUI:
             if not db_info or not records:
                 messagebox.showerror("Error", "Backup file is corrupted or incomplete")
                 return
-            
+
             exctract_path : str = self.extract_folder_label.cget("text")
             self._create_db_folder(db_info['name'], db_info['implementation'], db_info['template'], os.path.join(exctract_path, db_info['name']))
             with open(os.path.join(os.path.join(exctract_path, db_info['name']), "BACKUPDATA.json"), 'w', encoding='utf-8') as file:
