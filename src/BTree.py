@@ -1,165 +1,251 @@
-class BTreeNode:
-    def __init__(self, is_leaf=False):
-        self.is_leaf = is_leaf
-        self.keys = []  # Список ключей
-        self.children = []  # Список потомков
-
+import os
+import json
 
 class BTree:
-    def __init__(self, template, t=2):
-        self.root = BTreeNode(True)
-        self.t = t
+    root_node: str
+    t: int = 2
+    __counter: int = -1
+
+    def __init__(self, template: dict[str, dict], dir: str):
+        self.dir = dir
         self.template = template
-    
+        self.__define_root()
+        self.__counter = self.__determine_counter()
+
+    def __determine_counter(self) -> int:
+        max_counter = -1
+
+        for file_name in os.listdir(self.dir):
+            if file_name.startswith("node") and file_name.endswith(".json"):
+                try:
+                    count = int(file_name[4:-5])
+                    if count > max_counter:
+                        max_counter = count
+                except ValueError:
+                    continue
+
+        return max_counter
+
+    def __define_root(self):
+        for record in os.listdir(self.dir):
+            node_info = self.__read_node(os.path.join(self.dir, record))
+            if "is_leaf" in node_info and not node_info.get("is_leaf"):
+                self.root_node = record
+                return
+
+        self.root_node = self.__get_next_node_name()
+
+        with open(self.__get_full_path(self.root_node), 'w', encoding='utf-8') as file:
+            json.dump(self.__root_node(), file, indent=4, ensure_ascii=False)
+
+    def __get_next_node_name(self) -> str:
+        while True:
+            self.__counter += 1
+            node_name = f"node{self.__counter}.json"
+            if not os.path.exists(self.__get_full_path(node_name)):
+                return node_name
+
+    def __root_node(self):
+        return {
+            "is_leaf": True,
+            "children": [],
+            "record": []
+        }
+
     @staticmethod
-    def compare_dicts(dict1, dict2, partial=False):
-        """Сравнение двух словарей. Если partial=True, сравнение только по общим ключам."""
+    def __compare_records(dict1, dict2, partial = False):
         if partial:
             for key, value in dict1.items():
-                if key in dict2 and dict2[key] != value:
+                if str(dict2.get(key)) != str(value):
                     return False
             return True
+        
         for key in sorted(set(dict1.keys()).union(dict2.keys())):
-            val1 = dict1.get(key)
-            val2 = dict2.get(key)
-            if val1 is None:
-                return -1
-            if val2 is None:
-                return 1
+            val1 = str(dict1.get(key, ""))
+            val2 = str(dict2.get(key, ""))
             if val1 < val2:
                 return -1
             if val1 > val2:
                 return 1
         return 0
 
-    def insert(self, data):
-        if self.find(data["keys"]):
-            raise ValueError("Record already exists with thore keys")
-        root = self.root
-        if len(root.keys) == (2 * self.t - 1):
-            new_node = BTreeNode(False)
-            new_node.children.append(self.root)
-            self.split_child(new_node, 0)
-            self.root = new_node
-        self._insert_non_full(self.root, data)
+    def __sord_records(self, records: list[dict[str, str]]) -> list:
+        return sorted(records, key=lambda x: [str(v) for v in x.values()])
 
-    def split_child(self, parent, i):
-        t = self.t
-        full_child = parent.children[i]
-        new_node = BTreeNode(full_child.is_leaf)
-        parent.children.insert(i + 1, new_node)
-        parent.keys.insert(i, full_child.keys[t - 1])
+    def read_node(self, file_name):
+        return self.__read_node(self.__get_full_path(file_name))
 
-        new_node.keys = full_child.keys[t:]
-        full_child.keys = full_child.keys[:t - 1]
+    def __get_full_path(self, record) -> str:
+        return os.path.join(self.dir, record)
 
-        if not full_child.is_leaf:
-            new_node.children = full_child.children[t:]
-            full_child.children = full_child.children[:t]
+    def __read_node(self, file_path) -> dict:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
 
-    def _insert_non_full(self, node, data):
-        key = data["keys"]
-        i = len(node.keys) - 1
-        if node.is_leaf:
-            while i >= 0 and self.compare_dicts(key, node.keys[i]["keys"]) < 0:
-                i -= 1
-            node.keys.insert(i + 1, data)
+    def insert(self, data: dict[str, str]) -> None:
+        root_data = self.read_node(self.root_node)
+        if len(root_data["record"]) == 2 * self.t - 1:
+            new_root = self.__get_next_node_name()
+            new_root_data = {
+                "is_leaf": False,
+                "children": [self.root_node],
+                "record": []
+            }
+            with open(self.__get_full_path(new_root), 'w', encoding='utf-8') as file:
+                json.dump(new_root_data, file, indent=4, ensure_ascii=False)
+            self.__split_children(new_root, 0)
+            self.root_node = new_root
+            self.__insert_non_full(new_root, data)
         else:
-            while i >= 0 and self.compare_dicts(key, node.keys[i]["keys"]) < 0:
+            self.__insert_non_full(self.root_node, data)
+
+    def __split_children(self, node_file: str, position: int) -> None:
+        node_data = self.read_node(node_file)
+        child_file = node_data["children"][position]
+        child_data = self.read_node(child_file)
+
+        mid_index = self.t - 1
+        mid_record = child_data["record"][mid_index%len(child_data["record"])]
+
+        new_node_file = self.__get_next_node_name()
+        new_node_data = {
+            "is_leaf": child_data["is_leaf"],
+            "children": child_data["children"][mid_index + 1:] if not child_data["is_leaf"] else [],
+            "record": child_data["record"][mid_index + 1:]
+        }
+
+        child_data["record"] = child_data["record"][:mid_index]
+        if not child_data["is_leaf"]:
+            child_data["children"] = child_data["children"][:mid_index + 1]
+
+        node_data["record"].insert(position, mid_record)
+        node_data["children"].insert(position + 1, new_node_file)
+
+        with open(self.__get_full_path(child_file), 'w', encoding='utf-8') as file:
+            json.dump(child_data, file, indent=4, ensure_ascii=False)
+        with open(self.__get_full_path(new_node_file), 'w', encoding='utf-8') as file:
+            json.dump(new_node_data, file, indent=4, ensure_ascii=False)
+        with open(self.__get_full_path(node_file), 'w', encoding='utf-8') as file:
+            json.dump(node_data, file, indent=4, ensure_ascii=False)
+
+    def __insert_non_full(self, node_file: str, data: dict[str, str]) -> None:
+        node_data = self.read_node(node_file)
+        if node_data["is_leaf"]:
+            node_data["record"] = self.__sord_records(node_data["record"] + [data])
+            with open(self.__get_full_path(node_file), 'w', encoding='utf-8') as file:
+                json.dump(node_data, file, indent=4, ensure_ascii=False)
+        else:
+            i = len(node_data["record"]) - 1
+            while i >= 0 and self.__compare_records(data, node_data["record"][i]) < 0:
                 i -= 1
             i += 1
-            child = node.children[i]
-            if len(child.keys) == (2 * self.t - 1):
-                self.split_child(node, i)
-                if self.compare_dicts(key, node.keys[i]["keys"]) > 0:
+
+            child_file = node_data["children"][i]
+            child_data = self.read_node(child_file)
+
+            if len(child_data["record"]) == 2 * self.t - 1:
+                self.__split_children(node_file, i)
+
+                node_data = self.read_node(node_file)
+                if self.__compare_records(data, node_data["record"][i]) > 0:
                     i += 1
-            self._insert_non_full(node.children[i], data)
+            self.__insert_non_full(node_data["children"][i], data)
 
-    def find(self, key_query):
-        """Поиск данных по ключу."""
-        results = []
-        self._find(self.root, key_query, results)
-        return results
+    def find(self, query: dict[str, str]) -> list[dict[str, str]]:
+        result = []
 
-    def _find(self, node, key_query, results):
-        i = 0
-        while i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) > 0:
-            i += 1
-        if i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) == 0:
-            results.append(node.keys[i])
-        if not node.is_leaf:
-            if i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) <= 0:
-                self._find(node.children[i], key_query, results)
-            if i == len(node.keys) or self.compare_dicts(key_query, node.keys[i]["keys"]) > 0:
-                self._find(node.children[i + 1], key_query, results)
+        def _search_in_node(node_file: str, query: dict[str, str]) -> None:
+            node_data = self.read_node(node_file)
+            for record in node_data["record"]:
+                if self.__compare_records(query, record["keys"], partial=True):
+                    result.append(record)
 
-    def find_by_value(self, value_query):
-        """Поиск данных по значению."""
-        results = []
-        self._find_by_value(self.root, value_query, results)
-        return results
+            if node_data["is_leaf"]:
+                return []
 
-    def _find_by_value(self, node, value_query, results):
-        for key in node.keys:
-            if self.compare_dicts(value_query, key["values"], partial=True):
-                results.append(key)
-        if not node.is_leaf:
-            for child in node.children:
-                self._find_by_value(child, value_query, results)
+            for child in node_data["children"]:
+                _search_in_node(child, query)
 
-    def delete(self, key_query):
-        """Удаление записей по ключу."""
-        results = []
-        self._delete(self.root, key_query, results)
-        return results
+        _search_in_node(self.root_node, query)
+        return result
+    
+    def find_by_value(self, values: dict[str, str]) -> list[dict[str, str]]:
+        all_data = self.all_records()
+        result = []
 
-    def _delete(self, node, key_query, results):
-        i = 0
-        while i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) > 0:
-            i += 1
-        if i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) == 0:
-            results.append(node.keys.pop(i))
-        if not node.is_leaf:
-            if i < len(node.keys) and self.compare_dicts(key_query, node.keys[i]["keys"]) <= 0:
-                self._delete(node.children[i], key_query, results)
-            if i == len(node.keys) or self.compare_dicts(key_query, node.keys[i]["keys"]) > 0:
-                self._delete(node.children[i + 1], key_query, results)
+        for record in all_data:
+            if self.__values_check(record["values"], values):
+                result.append(record)
 
-    def delete_by_value(self, value_query):
-        """Удаление записей по значению."""
-        results = []
-        self._delete_by_value(self.root, value_query, results)
-        return results
+        return result
 
-    def _delete_by_value(self, node, value_query, results):
-        i = 0
-        while i < len(node.keys):
-            if self.compare_dicts(value_query, node.keys[i]["values"], partial=True):
-                results.append(node.keys.pop(i))
-            else:
-                i += 1
-        if not node.is_leaf:
-            for child in node.children:
-                self._delete_by_value(child, value_query, results)
-
-    def all_records(self):
-        """Возврат всех записей в дереве."""
-        return self._all_records(self.root)
-
-    def _all_records(self, node):
-        records = []
-        for i in range(len(node.keys)):
-            if not node.is_leaf:
-                records.extend(self._all_records(node.children[i]))
-            records.append(node.keys[i])
-        if not node.is_leaf:
-            records.extend(self._all_records(node.children[-1]))
-        return records
-
-    def edit(self, key_query, new_data):
-
-        deleted = self.delete(key_query["keys"])
-        if deleted:
-            self.insert(new_data)
-            return True
+    def __values_check(self, values1 : dict[str, str], values2 : dict[str, str]) -> bool:
+        v_values1 : list[str] = values1.keys()
+        v_values2 : list[str] = values2.keys()
+        if len(v_values1) < len(v_values2):
+            v_values1, v_values2 = v_values2, v_values1
+        if all(values1[key] == values2[key] for key in v_values2): return True
         return False
+    
+    def all_records(self) -> list[dict[str, str]]:
+        result = []
+
+        def _collect_records(node_file: str) -> None:
+            node_data = self.read_node(node_file)
+            result.extend(node_data["record"])
+
+            for child in node_data["children"]:
+                _collect_records(child)
+
+        _collect_records(self.root_node)
+        return result
+    
+    def delete(self, query: dict[str, str]) -> bool:
+        result = []
+        def _delete_from_node(node_file: str, query: dict[str, str]) -> bool:
+            node_data = self.read_node(node_file)
+            for i, record in enumerate(node_data["record"]):
+                if self.__compare_records(query, record["keys"], partial=True):
+                    result.append(node_data["record"][i])
+                    node_data["record"].pop(i)
+                    
+                    with open(self.__get_full_path(node_file), 'w', encoding='utf-8') as file:
+                        json.dump(node_data, file, indent=4, ensure_ascii=False)
+                    
+                    return result
+
+            if node_data["is_leaf"]:
+                return result
+
+            for child in node_data["children"]:
+                if _delete_from_node(child, query):
+                    return result
+
+            return result
+
+        return _delete_from_node(self.root_node, query)
+    
+    def delete_by_value(self, values: dict[str, str]) -> list[dict[str, str]]:
+        result = []
+
+        def _delete_from_node_by_value(node_file: str, values: dict[str, str]) -> None:
+            node_data = self.read_node(node_file)
+            i = 0
+
+            while i < len(node_data["record"]):
+                if self.__values_check(node_data["record"][i]["values"], values):
+                    result.append(node_data["record"].pop(i))
+                else:
+                    i += 1
+
+            with open(self.__get_full_path(node_file), 'w', encoding='utf-8') as file:
+                json.dump(node_data, file, indent=4, ensure_ascii=False)
+
+            if not node_data["is_leaf"]:
+                for child in node_data["children"]:
+                    _delete_from_node_by_value(child, values)
+
+        _delete_from_node_by_value(self.root_node, values)
+
+        return result
+

@@ -82,13 +82,14 @@ class DatabaseGUI:
         self._create_db_folder(self.db_name_entry.get(),self.implementation_option.get().strip(), self.template_option.get().strip(), os.path.join(self.selected_folder, self.db_name_entry.get()))
 
     def _create_db_folder(self, db_name, implementation, template, db_path):
-        if not self.selected_folder:
+        if not db_path:
             messagebox.showerror("Error", "Please choose a folder first.")
             return
 
         if not db_name or not implementation or not template:
             messagebox.showerror("Error", "Please provide:\nDatabase name\nImplementation\nData template.")
             return
+        
         if not os.path.exists(db_path):
             os.makedirs(db_path)
             db_info: dict[str,str] = {
@@ -108,11 +109,25 @@ class DatabaseGUI:
         if not self.valid_folder(folder): return
 
         self.selected_folder = folder
+
         db_info_path: str = os.path.join(folder, "BDInfo.json")
         with open(db_info_path) as json_file:
             db_info: dict = json.load(json_file)
         self.bd_info: dict[str,str] = db_info
         self.__init_database_handler()
+
+
+        backup_check: str = os.path.join(folder, "BACKUPDATA.json")
+        if os.path.exists(backup_check):
+            with open(backup_check) as json_file:
+                backup_records: dict = json.load(json_file)
+                print(backup_records)
+                for record in backup_records:
+                    #try:
+                        self.__database_handler.insert_data(record)
+                    #except Exception as e:
+                        #messagebox.showerror("Error", "Unexpected error.\nCan't insert record from backup")
+            os.remove(backup_check)
         self.__init_base()
 
     def __init_database_handler(self) -> None:
@@ -758,13 +773,12 @@ class DatabaseGUI:
             if not db_info or not records:
                 messagebox.showerror("Error", "Backup file is corrupted or incomplete")
                 return
-
-            self._create_db_folder(db_info['name'], db_info['implementation'], db_info['template'], self.extract_folder_label.cget("text"))
-            return
-            for record in records:
-                self.__database_handler.insert_data(record)
-
-            messagebox.showinfo("Success", "Database restored from backup")
+            
+            exctract_path : str = self.extract_folder_label.cget("text")
+            self._create_db_folder(db_info['name'], db_info['implementation'], db_info['template'], os.path.join(exctract_path, db_info['name']))
+            with open(os.path.join(os.path.join(exctract_path, db_info['name']), "BACKUPDATA.json"), 'w', encoding='utf-8') as file:
+                json.dump(records, file, indent=4, ensure_ascii=False)
+            messagebox.showinfo("Success", "Database backup was extracted.\nOpen the database to go futher")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to restore backup: {e}")
 

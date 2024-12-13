@@ -26,7 +26,7 @@ class DataBaseHandler:
             case "B-Tree":
                 if not self.current_template:
                     raise ValueError("Template must be set before creating a B-Tree handler.")
-                self.handler = BTree(self.current_template)
+                self.handler = BTree(self.current_template, db_path)
             case "Hash-table":
                 if not self.current_template:
                     raise ValueError("Template must be set before creating a HashTable handler.")
